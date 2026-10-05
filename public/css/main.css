@@ -1760,6 +1760,15 @@ html[data-lib-theme="eink"] .book-card-actions .cover-preview-btn .nav-icon,
 .imt-bo-chart-info strong { color: var(--color-text); }
 .bod-bars .bar { opacity: .5; }
 .bod-bars .bar.hl { opacity: 1; }
+/* Books-finished chart: whole month column is the tap target (as .imt-bo-daily); picked month full strength */
+.bod-fin-chart .bar, .bod-fin-chart .gr, .bod-fin-chart text { pointer-events: none; }
+.bod-fin-chart .bar.sel { opacity: 1; }
+.bod-fin-chart .hit { fill: transparent; pointer-events: all; cursor: pointer; outline: none; }
+.bod-fin-chart .hit:focus { fill: var(--color-surface2); }
+.bod-fin-list { margin-top: .4rem; }
+.bod-fin-list .stats-book-title a { color: var(--color-accent); }
+.bod-fin-note { margin-top: .5rem; font-size: .75rem; }
+.bod-fin-loading .bod-fin-list, .bod-fin-loading .bod-fin-note { opacity: .4; transition: opacity .15s; }
 .imt-bo-chart .ln.tgt { stroke: var(--color-text-muted); stroke-dasharray: 4 3; stroke-width: 1.5; }
 
 /* BookOrbit Dash tabs (Overview / Activity) — same look as the info-modal tabs. */

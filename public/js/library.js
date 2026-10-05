@@ -1466,12 +1466,39 @@ export async function openInfoModal(book, startTab = '') {
         originalMemberIds = checked;
         toast.success(t('bookorbit.collections_saved'));
 
-        // A removed collection linked to a shelf this book is currently in just went
-        // stale because of an edit Codexa itself made — ask right away instead of
-        // waiting for the next BookOrbit sync to notice.
-        const staleShelves = toRemove.length
+        // Mirror the change onto the Codexa shelves linked to these collections right away
+        // instead of waiting for the next shelf sync. Added collections first: moving a book
+        // between two linked shelves used to find it on no other shelf yet (the new shelf only
+        // picks it up on its next sync), so it was offered for deletion as if it were orphaned.
+        const setShelfChk = (id, on) => {
+          const chk = backdrop.querySelector(`.shelf-chk[value="${id}"]`);
+          if (chk) chk.checked = on;
+        };
+        for (const shelf of allShelves.filter(s => toAdd.includes(s.bo_collection_id) && !bookShelfIds.has(s.id))) {
+          await apiFetch(`/shelves/${shelf.id}/books`, { method: 'POST', body: JSON.stringify({ bookId: fullBook.id }) });
+          bookShelfIds.add(shelf.id);
+          setShelfChk(shelf.id, true);
+        }
+        // A removed collection linked to a shelf this book is currently in just went stale
+        // because of an edit Codexa itself made. If the book stays on some other shelf, the
+        // only sensible outcome is taking it off the stale one (both of the stale dialog's
+        // buttons do exactly that then), so just do it. Only a book about to be left on no
+        // shelf at all gets asked whether to keep or delete it.
+        let staleShelves = toRemove.length
           ? allShelves.filter(s => toRemove.includes(s.bo_collection_id) && bookShelfIds.has(s.id))
           : [];
+        if (staleShelves.length && [...bookShelfIds].some(id => !staleShelves.some(s => s.id === id))) {
+          for (const shelf of staleShelves) {
+            await apiFetch(`/shelves/${shelf.id}/books/${fullBook.id}`, { method: 'DELETE' });
+            bookShelfIds.delete(shelf.id);
+            setShelfChk(shelf.id, false);
+          }
+          staleShelves = [];
+        }
+        if (toAdd.length || toRemove.length) {
+          await reloadShelves();
+          await refreshShelfFilter();
+        }
         for (const shelf of staleShelves) {
           const otherShelfCount = bookShelfIds.size - 1;
           bookShelfIds.delete(shelf.id);

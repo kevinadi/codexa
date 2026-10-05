@@ -177,20 +177,41 @@ function dayDetailHtml(det) {
 // ── small chart helpers (shared by goal / rhythm / finished-per-month) ───────
 const CW = 300, CH = 96, CL = 28, CR = 8, CT = 8, CB = 18;
 
-function barChart(items, { labelEvery = 1, unit = 'm', ariaLabel }) {
-  // items: [{ label, value, title, hl }]
-  const max = Math.max(1, ...items.map(i => i.value));
-  const slot = (CW - CL - CR) / items.length;
+// Scale for a bar chart: a round step so it ends just above the largest bar with at most 4 dashed
+// gridlines (same idea as the book Reading tab's minutes-per-day chart). Minutes get h/m labels.
+const axisMinutes = (m) => (m >= 60 ? (m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m / 60}h`) : `${m}m`);
+function niceScale(max, minutes) {
+  const steps = minutes ? [1, 2, 5, 10, 15, 30, 60, 90, 120, 180, 240] : [1, 2, 5, 10, 20, 25, 50, 100];
+  const step = steps.find(st => max / st <= 4) || Math.ceil(max / 4 / steps[steps.length - 1]) * steps[steps.length - 1];
+  const top = Math.max(step, Math.ceil(max / step) * step);
+  const ticks = [];
+  for (let v = step; v <= top; v += step) ticks.push(v);
+  return { top, ticks, label: minutes ? axisMinutes : String };
+}
+
+function barChart(items, { labelEvery = 1, unit = 'm', ariaLabel, tapClass = '' }) {
+  // items: [{ label, value, title, hl, key }]. With tapClass, every non-empty item gets a full-height
+  // transparent column (the touch target — bars alone are too thin on a phone) carrying its key.
+  const minutes = unit === 'm';
+  const L = minutes ? 38 : CL; // room for "1h 30m"
+  const { top, ticks, label } = niceScale(Math.max(1, ...items.map(i => i.value)), minutes);
+  const Y = v => CH - CB - (v / top) * (CH - CT - CB);
+  const slot = (CW - L - CR) / items.length;
   const bw = Math.max(2, slot * 0.7);
+  const hits = tapClass ? items.map((it, i) => it.value > 0
+    ? `<rect class="hit" data-key="${escHtml(it.key)}" tabindex="0" role="button" aria-label="${escHtml(it.title)}" x="${(L + i * slot).toFixed(1)}" y="${CT}" width="${slot.toFixed(1)}" height="${CH - CT - CB}"><title>${escHtml(it.title)}</title></rect>`
+    : '').join('') : '';
+  const grid = ticks.map(v =>
+    `<line class="gr gr-dash" x1="${L}" x2="${CW - CR}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text x="${L - 4}" y="${(Y(v) + 3).toFixed(1)}" text-anchor="end">${escHtml(label(v))}</text>`).join('');
   const bars = items.map((it, i) => {
-    const h = (it.value / max) * (CH - CT - CB);
-    const x = CL + i * slot + (slot - bw) / 2;
-    return `<rect class="bar${it.hl ? ' hl' : ''}" x="${x.toFixed(1)}" y="${(CH - CB - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"><title>${escHtml(it.title)}</title></rect>` +
+    const h = (it.value / top) * (CH - CT - CB);
+    const x = L + i * slot + (slot - bw) / 2;
+    return `<rect class="bar${it.hl ? ' hl' : ''}"${it.key ? ` data-key="${escHtml(it.key)}"` : ''} x="${x.toFixed(1)}" y="${(CH - CB - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}">${tapClass ? '' : `<title>${escHtml(it.title)}</title>`}</rect>` +
       (i % labelEvery === 0 ? `<text x="${(x + bw / 2).toFixed(1)}" y="${CH - 4}" text-anchor="middle">${escHtml(it.label)}</text>` : '');
   }).join('');
-  return `<div class="imt-bo-chart bod-bars"><svg viewBox="0 0 ${CW} ${CH}" role="img" aria-label="${escHtml(ariaLabel)}">
-    <line class="gr" x1="${CL}" x2="${CW - CR}" y1="${CH - CB}" y2="${CH - CB}"/>
-    <text x="${CL - 4}" y="${CT + 3}" text-anchor="end">${max}${unit}</text>${bars}</svg></div>`;
+  return `<div class="imt-bo-chart bod-bars${tapClass ? ` ${tapClass}` : ''}"><svg viewBox="0 0 ${CW} ${CH}" role="img" aria-label="${escHtml(ariaLabel)}">
+    ${hits}${grid}<line class="gr" x1="${L}" x2="${CW - CR}" y1="${CH - CB}" y2="${CH - CB}"/>
+    <text x="${L - 4}" y="${CH - CB + 3}" text-anchor="end">0</text>${bars}</svg></div>`;
 }
 
 function goalHtml(g) {
@@ -201,8 +222,11 @@ function goalHtml(g) {
   const pts = g.points;
   const actual = pts.filter(p => p.month <= nowMonth);
   const max = Math.max(1, g.goalBooks, ...pts.map(p => Math.max(p.actualCumulative, p.targetCumulative || 0)));
+  const { top, ticks } = niceScale(max, false);
   const X = m => (CL + (m - 1) / 11 * (CW - CL - CR)).toFixed(1);
-  const Y = v => (CT + (1 - v / max) * (CH - CT - CB)).toFixed(1);
+  const Y = v => (CT + (1 - v / top) * (CH - CT - CB)).toFixed(1);
+  const grid = ticks.map(v =>
+    `<line class="gr gr-dash" x1="${CL}" x2="${CW - CR}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${CL - 4}" y="${Number(Y(v)) + 3}" text-anchor="end">${v}</text>`).join('');
   const line = (arr, key) => arr.filter(p => p[key] != null).map((p, i) => `${i ? 'L' : 'M'}${X(p.month)} ${Y(p[key])}`).join(' ');
   const labels = [1, 4, 7, 10, 12].map(m => `<text x="${X(m)}" y="${CH - 4}" text-anchor="middle">${escHtml(monthName(m, 'narrow'))}</text>`).join('');
   const status = g.status ? t(`bookorbit_dash.act_goal_${g.status === 'on_pace' ? 'on_pace' : g.status}`) : '';
@@ -210,8 +234,8 @@ function goalHtml(g) {
     <div class="stats-section-title">${t('bookorbit_dash.act_goal_title')}</div>
     <div class="imt-reading-summary"><strong>${g.completedBooks} / ${g.goalBooks}</strong>${status ? ` &middot; ${escHtml(status)}` : ''} &middot; ${t('bookorbit_dash.act_goal_projected', { n: Math.round(g.projectedBooks * 10) / 10 })}</div>
     <div class="imt-bo-chart"><svg viewBox="0 0 ${CW} ${CH}" role="img" aria-label="${escHtml(t('bookorbit_dash.act_goal_title'))}">
-      <line class="gr" x1="${CL}" x2="${CW - CR}" y1="${CH - CB}" y2="${CH - CB}"/>
-      <text x="${CL - 4}" y="${Number(Y(max)) + 3}" text-anchor="end">${max}</text>
+      ${grid}<line class="gr" x1="${CL}" x2="${CW - CR}" y1="${CH - CB}" y2="${CH - CB}"/>
+      <text x="${CL - 4}" y="${CH - CB + 3}" text-anchor="end">0</text>
       <path class="ln tgt" d="${line(pts, 'targetCumulative')}"/>
       <path class="ln" d="${line(actual, 'actualCumulative')}"/>${labels}
     </svg></div>
@@ -244,18 +268,114 @@ function sourcesHtml(sources) {
   return `<div class="stats-section-title">${t('bookorbit_dash.act_sources_title')}</div>${rows}`;
 }
 
+// Tapping a month lists the books finished in it (GET /bookorbit/activity/finished/:ym — see the
+// route's comment for how they're found). The most recent month with a finish is shown to start with,
+// so "what did I read last?" needs no tap at all.
+let finCounts = new Map(); // 'YYYY-MM' -> the bar's count
+let selectedMonth = null;
+const monthCache = new Map(); // 'YYYY-MM' -> { books }
+
 function finishedHtml(months) {
   // Last 12 calendar months ending now, gaps filled with 0.
   const now = new Date();
   const counts = new Map(months.map(m => [`${m.year}-${m.month}`, m.count]));
   const items = [];
+  finCounts = new Map();
   for (let k = 11; k >= 0; k--) {
     const d = new Date(now.getFullYear(), now.getMonth() - k, 1);
     const n = counts.get(`${d.getFullYear()}-${d.getMonth() + 1}`) || 0;
-    items.push({ label: monthName(d.getMonth() + 1, 'narrow'), value: n, title: `${d.toLocaleDateString(lang(), { month: 'long', year: 'numeric' })} · ${n}` });
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    finCounts.set(key, n);
+    items.push({ key, label: monthName(d.getMonth() + 1, 'narrow'), value: n, title: `${d.toLocaleDateString(lang(), { month: 'long', year: 'numeric' })} · ${n}` });
   }
   if (!items.some(i => i.value > 0)) return '';
-  return `<div class="stats-section-title">${t('bookorbit_dash.act_finished_title')}</div>${barChart(items, { unit: '', ariaLabel: t('bookorbit_dash.act_finished_title') })}`;
+  return `<div class="stats-section-title">${t('bookorbit_dash.act_finished_title')}</div>
+    ${barChart(items, { unit: '', ariaLabel: t('bookorbit_dash.act_finished_title'), tapClass: 'bod-fin-chart' })}
+    <div id="bod-fin-detail" class="bod-day-detail"></div>`;
+}
+
+function coverSrc(boBookId) {
+  const token = encodeURIComponent(localStorage.getItem('br_token') || '');
+  return `/api/books/bookorbit-cover/${boBookId}?token=${token}`;
+}
+
+function monthDetailHtml(ym, det) {
+  const [y, m] = ym.split('-').map(Number);
+  const monthLabel = new Date(y, m - 1, 1).toLocaleDateString(lang(), { month: 'long', year: 'numeric' });
+  const shortDay = (ymd) => { const d = parseDay(ymd); return d ? d.toLocaleDateString(lang(), { day: 'numeric', month: 'short' }) : ''; };
+  const rows = det.books.map(b => {
+    const title = escHtml(b.title || '—');
+    const name = b.localBookId ? `<a href="/reader.html?id=${b.localBookId}">${title}</a>` : title;
+    const meta = [
+      b.startedOn ? t('bookorbit_dash.act_fin_started', { date: shortDay(b.startedOn) }) : '',
+      t('bookorbit_dash.act_fin_finished', { date: shortDay(b.finishedOn) }),
+      b.totalSeconds > 0 ? fmtDur(b.totalSeconds) : '',
+      b.status === 'rereading' ? t('library.status_rereading') : '',
+    ].filter(Boolean).join(' &middot; ');
+    return `
+      <div class="stats-book-row">
+        ${b.hasCover ? `<img src="${coverSrc(b.boBookId)}" class="stats-book-cover" alt="" loading="lazy">` : '<div class="stats-book-cover-ph">📖</div>'}
+        <div class="stats-book-info">
+          <div class="stats-book-title">${name}</div>
+          <div class="stats-book-meta">${escHtml(b.authors.join(', '))}</div>
+          <div class="stats-book-meta">${meta}</div>
+        </div>
+      </div>`;
+  }).join('');
+  const missing = (finCounts.get(ym) || 0) - det.books.length;
+  return `
+    <div class="imt-reading-summary" style="margin-top:.6rem"><strong>${escHtml(monthLabel)}</strong> &middot; ${t('bookorbit_dash.act_fin_count', { n: det.books.length })}</div>
+    <div class="stats-top-books bod-fin-list">${rows}</div>
+    ${missing > 0 ? `<div class="imt-reading-summary bod-fin-note">${t('bookorbit_dash.act_fin_missing', { n: missing })}</div>` : ''}`;
+}
+
+async function selectMonth(ym) {
+  selectedMonth = ym;
+  root.querySelectorAll('.bod-fin-chart .bar.sel').forEach(el => el.classList.remove('sel'));
+  root.querySelector(`.bod-fin-chart .bar[data-key="${ym}"]`)?.classList.add('sel');
+  const el = root.querySelector('#bod-fin-detail');
+  if (!el) return;
+  if (!monthCache.has(ym)) {
+    // Keep the previous month's list on screen (dimmed) while this one loads, and only swap the
+    // header line to the new month: blanking it to a one-line "Loading…" collapsed the page and made
+    // it jump up, then back down once the new list arrived. First load has nothing to keep yet.
+    const head = el.querySelector('.imt-reading-summary');
+    if (head) {
+      const [y, m] = ym.split('-').map(Number);
+      head.innerHTML = `<strong>${escHtml(new Date(y, m - 1, 1).toLocaleDateString(lang(), { month: 'long', year: 'numeric' }))}</strong> &middot; ${t('opds.loading')}`;
+      el.classList.add('bod-fin-loading');
+    } else {
+      el.innerHTML = `<div class="imt-empty" style="padding:.5rem 0">${t('opds.loading')}</div>`;
+    }
+    try {
+      monthCache.set(ym, await apiFetch(`/bookorbit/activity/finished/${ym}?expected=${finCounts.get(ym) || 0}`));
+    } catch (err) {
+      if (selectedMonth === ym) {
+        el.classList.remove('bod-fin-loading');
+        el.innerHTML = `<div class="imt-empty">${escHtml(t('common.err_prefix') + err.message)}</div>`;
+      }
+      return;
+    }
+  }
+  if (selectedMonth === ym) {
+    el.classList.remove('bod-fin-loading');
+    el.innerHTML = monthDetailHtml(ym, monthCache.get(ym));
+  }
+}
+
+function bindFinished() {
+  const box = root?.querySelector('.bod-fin-chart');
+  if (!box) return;
+  const pick = (e) => e.target.closest?.('.hit');
+  box.addEventListener('click', (e) => { const h = pick(e); if (h) selectMonth(h.dataset.key); });
+  box.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const h = pick(e);
+    if (h) { e.preventDefault(); selectMonth(h.dataset.key); }
+  });
+  const latest = [...finCounts].reverse().find(([, n]) => n > 0)?.[0];
+  const start = selectedMonth && finCounts.get(selectedMonth) > 0 ? selectedMonth : latest;
+  if (start) selectMonth(start);
 }
 
 // ── mounting / interaction ───────────────────────────────────────────────────
@@ -274,6 +394,7 @@ function render() {
     <div class="bookorbit-dash-section">${sourcesHtml(data.sources)}${finishedHtml(data.completion.months)}</div>`;
   bindHeatmap();
   scrollHeatmap();
+  bindFinished();
   if (selectedDay && dayCache.has(selectedDay)) {
     const el = root.querySelector('#bod-day-detail');
     if (el) el.innerHTML = dayDetailHtml(dayCache.get(selectedDay));
@@ -350,6 +471,8 @@ export async function mountActivity(el, { refresh = false } = {}) {
     calendar = data.calendar;
     selectedDay = null;
     dayCache.clear();
+    selectedMonth = null;
+    monthCache.clear();
     loadedAt = Date.now();
     render();
   } catch (err) {

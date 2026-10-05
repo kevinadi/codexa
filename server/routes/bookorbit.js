@@ -1115,6 +1115,106 @@ router.get('/activity/day/:day', async (req, res) => {
   });
 });
 
+// GET /api/bookorbit/activity/finished/:ym[?expected=N] — the books behind one "Books finished per
+// month" bar (YYYY-MM). That bar counts *completed reading attempts* ending in the month, but
+// BookOrbit only lists attempts per book, so the books have to be found first:
+//  1. One BookQuery for books whose finishedAt falls in the month. finishedAt is only kept while the
+//     status is 'read', which covers nearly every finish, wherever it happened (Kobo, KOReader, by hand).
+//  2. Only when that comes up short of `expected` (the bar's count): the books that can hold a finish
+//     without a 'read' status — re-reads in progress (starting one clears finishedAt) and books with
+//     progress but some other or no status (e.g. history imported as "migration" attempts). Their
+//     attempts don't depend on the month, so that sweep is cached per user (finishSweepCache).
+// Each candidate's attempts give the exact start/end dates and time of that read-through. A finish on
+// a book with no progress and no 'read' status still can't be found; the client says so.
+const FINISH_SWEEP_TTL_MS = 10 * 60 * 1000;
+const finishSweepCache = new Map(); // userId -> { at, entries: [{ card, attempts }] }
+
+function finishedQuery(userId, ctx, filter, size) {
+  return bookorbit.api(userId, ctx, 'POST', '/books/query', {
+    filter, sort: [{ field: 'lastReadAt', dir: 'desc' }], pagination: { page: 0, size },
+  });
+}
+
+async function finishSweep(userId, ctx) {
+  const c = finishSweepCache.get(userId);
+  if (c && Date.now() - c.at < FINISH_SWEEP_TTL_MS) return c.entries;
+  const group = (join, rules) => ({ type: 'group', join, rules });
+  const rereading = await finishedQuery(userId, ctx, group('AND', [{ type: 'rule', field: 'readStatus', operator: 'includesAny', value: ['rereading'] }]), 50);
+  const others = await finishedQuery(userId, ctx, group('AND', [
+    { type: 'rule', field: 'readStatus', operator: 'excludesAll', value: ['read', 'rereading'] },
+    group('OR', [{ type: 'rule', field: 'readProgress', operator: 'isFinished' }, { type: 'rule', field: 'readProgress', operator: 'isInProgress' }]),
+  ]), 60);
+  if (!rereading.ok && !others.ok) return [];
+  const entries = [];
+  for (const card of [...(rereading.data?.items || []), ...(others.data?.items || [])]) {
+    const att = await bookorbit.fetchAttempts(userId, ctx, card.id);
+    if (att?.items.some(a => a.outcome === 'completed' && a.endedOn)) entries.push({ card, attempts: att.items });
+  }
+  finishSweepCache.set(userId, { at: Date.now(), entries });
+  return entries;
+}
+
+router.get('/activity/finished/:ym', async (req, res) => {
+  const ctx = requireContext(req, res);
+  if (!ctx) return;
+  const ym = String(req.params.ym);
+  const m = /^(\d{4})-(\d{2})$/.exec(ym);
+  if (!m || +m[2] < 1 || +m[2] > 12) return res.status(400).json({ error: 'error.invalid_date' });
+  const expected = Math.max(0, parseInt(req.query.expected, 10) || 0);
+  const key = `${req.user.id}:fin:${ym}`;
+  const c = activityCache.get(key);
+  if (!req.query.refresh && c && Date.now() - c.at < ACTIVITY_TTL_MS) return res.json(c.data);
+
+  const lastDay = String(new Date(Date.UTC(+m[1], +m[2], 0)).getUTCDate()).padStart(2, '0');
+  const finished = await finishedQuery(req.user.id, ctx, { type: 'group', join: 'AND', rules: [
+    { type: 'rule', field: 'finishedAt', operator: 'between', value: `${ym}-01`, valueTo: `${ym}-${lastDay}` },
+  ] }, 100);
+  if (!finished.ok || !finished.data) return res.status(502).json({ error: 'error.bookorbit_unreachable' });
+
+  const books = [];
+  const seen = new Set();
+  const addFinishes = (card, attempts) => {
+    seen.add(card.id);
+    const base = {
+      boBookId: card.id,
+      title:    card.title || null,
+      authors:  Array.isArray(card.authors) ? card.authors : [],
+      hasCover: !!card.hasCover,
+      rating:   card.rating ?? null,
+      status:   card.readStatus?.status || null,
+    };
+    const inMonth = (attempts || []).filter(a => a.outcome === 'completed' && String(a.endedOn || '').startsWith(ym));
+    for (const a of inMonth) books.push({ ...base, startedOn: a.startedOn, finishedOn: a.endedOn, totalSeconds: a.totalSeconds });
+    const fin = card.readStatus?.finishedAt;
+    if (!inMonth.length && card.readStatus?.status === 'read' && String(fin || '').startsWith(ym)) {
+      // No attempt recorded for it (or attempts unavailable) — fall back to the status's own dates.
+      books.push({ ...base, startedOn: card.readStatus.startedAt?.slice(0, 10) || null, finishedOn: fin.slice(0, 10), totalSeconds: 0 });
+    }
+  };
+  for (const card of finished.data.items || []) {
+    if (!card?.id || seen.has(card.id)) continue;
+    addFinishes(card, (await bookorbit.fetchAttempts(req.user.id, ctx, card.id))?.items);
+  }
+  if (books.length < expected) {
+    for (const { card, attempts } of await finishSweep(req.user.id, ctx)) {
+      if (!seen.has(card.id)) addFinishes(card, attempts);
+    }
+  }
+  books.sort((a, b) => String(b.finishedOn).localeCompare(String(a.finishedOn)));
+
+  if (books.length) {
+    const ids = [...new Set(books.map(x => x.boBookId))];
+    const rows = getDb().prepare(
+      `SELECT bo_book_id, book_id FROM bookorbit_sync_state WHERE user_id = ? AND bo_book_id IN (${ids.map(() => '?').join(',')})`
+    ).all(req.user.id, ...ids);
+    const localByBoId = new Map(rows.map(x => [x.bo_book_id, x.book_id]));
+    for (const x of books) x.localBookId = localByBoId.get(x.boBookId) || null;
+  }
+  const data = { month: ym, books };
+  activityCache.set(key, { at: Date.now(), data });
+  res.json(data);
+});
+
 // PUT /api/bookorbit/dashboard/goal — body: { goalBooks: number|null }. null clears the goal.
 router.put('/dashboard/goal', async (req, res) => {
   const ctx = requireContext(req, res);
