@@ -1243,7 +1243,7 @@ export async function initBookorbit() {
   emptyEl      = document.getElementById('bookorbit-empty');
   paginationEl = document.getElementById('bookorbit-pagination');
   autoLoadEl   = document.getElementById('bookorbit-autoload');
-  autoLoader   = createAutoLoader(autoLoadEl, loadMoreBooks);
+  autoLoader   = createAutoLoader(autoLoadEl, loadMoreBooks, document.getElementById('bookorbit-grid'));
   sidebarEl       = document.getElementById('bookorbit-sidebar');
   drawerToggleBtn = document.getElementById('bookorbit-drawer-toggle');
   drawerCloseBtn  = document.getElementById('bookorbit-drawer-close');

@@ -1140,7 +1140,7 @@ export async function initOpds() {
   drawerClose   = document.getElementById('opds-drawer-close');
   drawerOverlay = document.getElementById('opds-drawer-overlay');
   autoLoadEl    = document.getElementById('opds-autoload');
-  autoLoader    = createAutoLoader(autoLoadEl, loadMoreOpds);
+  autoLoader    = createAutoLoader(autoLoadEl, loadMoreOpds, document.getElementById('catalog-grid'));
 
   btnUp.addEventListener('click', () => {
     if (navStack.length > 1) {

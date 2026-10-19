@@ -229,7 +229,10 @@ export function autoLoadEnabled() {
 // listens to every scroll in capture phase and measures the box against the viewport. The button
 // stays clickable: it's the manual fallback, and after a failed load auto-loading pauses until
 // it's tapped, so a dead server isn't hammered (and toasted) on every scroll tick.
-export function createAutoLoader(box, loadMore) {
+// `content` is the grid the box sits under. On wide screens that grid scrolls internally and the
+// box stays pinned (always visible) below it, so the box's position alone would trigger loads
+// back-to-back; what counts is how much of the grid is still left to scroll, inside and out.
+export function createAutoLoader(box, loadMore, content) {
   const btn = box.querySelector('button');
   let busy = false;
   let paused = false;
@@ -253,7 +256,13 @@ export function createAutoLoader(box, loadMore) {
     if (busy || paused || box.hidden || !autoLoadEnabled() || !box.isConnected) return;
     const r = box.getBoundingClientRect();
     if (!r.width && !r.height) return; // its panel is hidden (display:none)
-    if (r.top <= (window.innerHeight || document.documentElement.clientHeight) + 600) run();
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    let left = r.top - vh;
+    if (content) {
+      const inner = Math.max(0, content.scrollHeight - content.scrollTop - content.clientHeight);
+      left = Math.max(left, inner + content.getBoundingClientRect().bottom - vh);
+    }
+    if (left <= 600) run();
   };
   btn.addEventListener('click', () => { paused = false; run(); });
   document.addEventListener('scroll', check, { capture: true, passive: true });
