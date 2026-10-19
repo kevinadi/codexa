@@ -1070,6 +1070,12 @@ staticPasswords:
           local storage.
         </li>
 <li>
+<strong>Load while scrolling:</strong> in the OPDS and BookOrbit browsers, the next page of books
+          is added to the list by itself when you scroll near the bottom, instead of Previous / Next
+          buttons. A <em>Load more</em> button under the list does the same by hand (and retries after an
+          error). Stored in your browser's local storage, so it's set per device.
+        </li>
+<li>
 <strong>Auto-status thresholds:</strong> two percentages that control when a book's status
           automatically switches — "Mark as Reading at" and "Mark as Read at" — defaulting to
           0% and 95%. Reading progress is weighted by content rather than raw page count, so a
@@ -2571,7 +2577,7 @@ staticPasswords:
 <figcaption>Page settings</figcaption>
 </figure>
 <ul>
-<li><strong>Page layout:</strong> Single page or Two pages (spread — side-by-side like an open book).</li>
+<li><strong>Page layout:</strong> Single page, Two pages (spread — side-by-side like an open book), Auto (two pages while the screen is in landscape, one page in portrait — rotating a tablet switches on its own; near-square screens and phones stay on one page) or Continuous.</li>
 <li><strong>Margins:</strong> horizontal margin between text and screen edge (0–120 px).</li>
 <li><strong>Auto-hide toolbar:</strong> hides the header while reading; reveal by moving the pointer to the top or tapping the top edge.</li>
 <li><strong>Screen edge padding:</strong> insets for each side to avoid curved edges and notches.</li>

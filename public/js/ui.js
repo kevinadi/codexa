@@ -216,6 +216,51 @@ export function setButtonLoading(btn, loading, originalLabel) {
 // document/scrollingElement regardless of either. Rather than pick one and be wrong
 // somewhere, reset every plausible scroll owner; resetting one that isn't actually
 // scrolled is a harmless no-op.
+// "Load while scrolling" (Settings → General, per device like the other General toggles): the
+// OPDS and BookOrbit browsers append the next page of books when the user nears the bottom,
+// instead of showing Previous/Next buttons.
+export function autoLoadEnabled() {
+  try { return localStorage.getItem('br_infinite_scroll') === 'true'; } catch { return false; }
+}
+
+// Wires one browser's "Load more" box (a button under its grid) to loadMore(), which appends the
+// next page and resolves true if there may be more. Which element scrolls differs by layout
+// (window, .app-body, the panel or the grid itself), so instead of watching one container this
+// listens to every scroll in capture phase and measures the box against the viewport. The button
+// stays clickable: it's the manual fallback, and after a failed load auto-loading pauses until
+// it's tapped, so a dead server isn't hammered (and toasted) on every scroll tick.
+export function createAutoLoader(box, loadMore) {
+  const btn = box.querySelector('button');
+  let busy = false;
+  let paused = false;
+  const run = async () => {
+    if (busy || box.hidden) return;
+    busy = true;
+    btn.disabled = true;
+    let more = false;
+    try {
+      more = await loadMore();
+      paused = false;
+    } catch {
+      paused = true;
+    } finally {
+      busy = false;
+      btn.disabled = false;
+    }
+    if (more) requestAnimationFrame(check); // keep going while the box is still on screen
+  };
+  const check = () => {
+    if (busy || paused || box.hidden || !autoLoadEnabled() || !box.isConnected) return;
+    const r = box.getBoundingClientRect();
+    if (!r.width && !r.height) return; // its panel is hidden (display:none)
+    if (r.top <= (window.innerHeight || document.documentElement.clientHeight) + 600) run();
+  };
+  btn.addEventListener('click', () => { paused = false; run(); });
+  document.addEventListener('scroll', check, { capture: true, passive: true });
+  window.addEventListener('resize', check);
+  return { check };
+}
+
 export function scrollCatalogToTop() {
   document.scrollingElement?.scrollTo(0, 0);
   document.querySelector('.app-body')?.scrollTo(0, 0);

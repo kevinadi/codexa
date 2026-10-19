@@ -14,4 +14,8 @@
     <string name="custom_headers_toggle">Erweitert: Benutzerdefinierte HTTP-Header</string>
     <string name="custom_headers_desc">Wird mit jeder Anfrage an diesen Server gesendet. Nützlich für headless-Authentifizierung hinter einem Reverse-Proxy (z. B. Cloudflare Access, Pangolin).</string>
     <string name="custom_headers_hint">CF-Access-Client-Id: xxxx\nCF-Access-Client-Secret: yyyy</string>
+    <string name="not_codexa_title">Das sieht nicht nach Codexa aus</string>
+    <string name="not_codexa_message">Die Seite unter %1$s ist kein Codexa-Server. Prüfe, ob du die richtige Serveradresse eingegeben hast.</string>
+    <string name="not_codexa_change">Server ändern</string>
+    <string name="not_codexa_continue">Trotzdem fortfahren</string>
 </resources>

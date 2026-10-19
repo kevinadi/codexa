@@ -245,6 +245,16 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div class="setting-toggle-row">
+          <div>
+            <div class="setting-toggle-label" data-i18n="settings.infinite_scroll">Nalaganje med drsenjem</div>
+            <div class="setting-toggle-hint" data-i18n="settings.infinite_scroll_hint">V brskalnikih OPDS in BookOrbit se naslednje knjige naložijo same, ko se pomaknete do dna, namesto gumbov za strani.</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="infinite-scroll-toggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
 
         <hr class="section-divider" style="margin-top:1.25rem">
 
@@ -551,6 +561,7 @@
             <div id="opds-book-grid" class="book-grid" hidden></div>
           </div>
           <p id="catalog-empty" hidden data-i18n="opds.no_results">Ni zadetkov.</p>
+          <div id="opds-autoload" class="autoload-more" hidden><button type="button" class="btn btn-secondary btn-sm" data-i18n="opds.load_more">Naloži več</button></div>
           <div id="opds-pagination" hidden></div>
         </div>
 
@@ -624,6 +635,7 @@
             </div>
           </div>
           <p id="bookorbit-empty" hidden data-i18n="bookorbit.no_results">No books found.</p>
+          <div id="bookorbit-autoload" class="autoload-more" hidden><button type="button" class="btn btn-secondary btn-sm" data-i18n="opds.load_more">Naloži več</button></div>
           <div id="bookorbit-pagination" hidden></div>
         </div>
 

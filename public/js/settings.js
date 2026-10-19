@@ -220,7 +220,7 @@ btnClearKosync.addEventListener('click', () => {
         setButtonLoading(btnClearKosync, false, t('settings.btn_clear_kosync'));
       }
     },
-    'Odstrani',
+    t('settings.btn_clear_kosync'),
     true
   );
 });
@@ -886,6 +886,14 @@ if (autoOpenToggle) {
   autoOpenToggle.checked = localStorage.getItem('br_auto_open_last') === 'true';
   autoOpenToggle.addEventListener('change', () => {
     localStorage.setItem('br_auto_open_last', String(autoOpenToggle.checked));
+  });
+}
+
+const infiniteScrollToggle = document.getElementById('infinite-scroll-toggle');
+if (infiniteScrollToggle) {
+  infiniteScrollToggle.checked = localStorage.getItem('br_infinite_scroll') === 'true';
+  infiniteScrollToggle.addEventListener('change', () => {
+    localStorage.setItem('br_infinite_scroll', String(infiniteScrollToggle.checked));
   });
 }
 

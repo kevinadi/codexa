@@ -1,5 +1,5 @@
 import { apiFetch } from './api.js';
-import { toast, setButtonLoading, showBlockingOverlay, scrollCatalogToTop } from './ui.js';
+import { toast, setButtonLoading, showBlockingOverlay, scrollCatalogToTop, autoLoadEnabled, createAutoLoader } from './ui.js';
 import { t, applyTranslations } from './i18n.js';
 import { reloadShelves } from './sidebar.js';
 import { reloadLibrary, openInfoModal } from './library.js';
@@ -20,6 +20,11 @@ let _initialized  = false;
 // Pagination state for current browse level
 let pageHistory    = [];  // stack of URLs for each page visited (index = page number - 1)
 let currentFeed    = null; // the last loaded feed (has .next, .entries etc.)
+// Bumped by every browse/page/search, so an auto-load ("Load while scrolling") still in flight
+// when the user navigates elsewhere is dropped instead of appending into the new listing.
+let feedGen        = 0;
+let autoLoadEl     = null;
+let autoLoader     = null;
 let serverHealth   = {};  // id -> { reachable, checkedAt } — from GET /opds/health, all servers
 
 // ── DOM refs (assigned in initOpds) ──────────────────────────────────────────
@@ -193,6 +198,7 @@ function navigateToFolder(entry, parentDepth) {
 }
 
 async function browseUrl(url) {
+  feedGen++;
   setLoading(true);
   catalogEmpty.hidden = true;
   catalogSearch.value = '';
@@ -231,6 +237,7 @@ async function browseUrl(url) {
 }
 
 async function gotoPage(url) {
+  feedGen++;
   setLoading(true);
   catalogEmpty.hidden = true;
   try {
@@ -296,6 +303,17 @@ function renderPagination() {
   if (!bar) return;
   bar.innerHTML = '';
 
+  // "Load while scrolling" replaces the buttons with a Load more box under the grid.
+  if (autoLoadEl) {
+    autoLoadEl.hidden = !(autoLoadEnabled() && currentFeed?.next);
+    if (!autoLoadEl.hidden) {
+      bar.hidden = true;
+      requestAnimationFrame(() => autoLoader?.check()); // a short page may not fill the screen
+      return;
+    }
+    if (autoLoadEnabled()) { bar.hidden = true; return; }
+  }
+
   const feed     = currentFeed;
   const pageNum  = pageHistory.length; // 1-based current page
   const hasNext  = !!(feed?.next);
@@ -333,6 +351,31 @@ function renderPagination() {
   bar.appendChild(prevBtn);
   bar.appendChild(info);
   bar.appendChild(nextBtn);
+}
+
+// Auto-load: fetch the next page and append its books to the grid (rather than replacing it).
+// Resolves true while there's yet another page; throws (after a toast) so the loader pauses.
+async function loadMoreOpds() {
+  if (!currentFeed?.next || !currentServer) return false;
+  const gen = feedGen;
+  const nextUrl = resolveClientUrl(currentFeed.next);
+  if (pageHistory.includes(nextUrl)) { autoLoadEl.hidden = true; return false; } // feed links back to itself
+  let feed;
+  try {
+    feed = await apiFetch(`/opds/browse/${currentServer.id}?url=${encodeURIComponent(nextUrl)}`);
+  } catch (err) {
+    toast.error(t('opds.err_browse', { msg: err.message }));
+    throw err;
+  }
+  if (gen !== feedGen) return false; // user moved on meanwhile
+  pageHistory.push(nextUrl);
+  currentFeed = feed;
+  const books = feed.entries?.filter(e => !e.isNav) || [];
+  _lastFeed = { ...feed, entries: [...(_lastFeed?.entries || []), ...(feed.entries || [])] };
+  books.forEach(entry => bookGridEl.appendChild(renderBookCard(entry)));
+  if (books.length) { bookGridEl.hidden = false; catalogEmpty.hidden = true; }
+  renderPagination();
+  return !!feed.next;
 }
 
 // Resolve a next URL that may be relative — use the last page URL as base
@@ -676,6 +719,7 @@ async function doSearch() {
   const q = catalogSearch.value.trim();
   if (!q || !currentServer) return;
 
+  feedGen++;
   setLoading(true);
   catalogEmpty.hidden = true;
 
@@ -1095,6 +1139,8 @@ export async function initOpds() {
   drawerToggle  = document.getElementById('opds-drawer-toggle');
   drawerClose   = document.getElementById('opds-drawer-close');
   drawerOverlay = document.getElementById('opds-drawer-overlay');
+  autoLoadEl    = document.getElementById('opds-autoload');
+  autoLoader    = createAutoLoader(autoLoadEl, loadMoreOpds);
 
   btnUp.addEventListener('click', () => {
     if (navStack.length > 1) {

@@ -2871,6 +2871,10 @@ html[data-lib-theme="eink"] .nav-tile-count,
    outranks the UA stylesheet's default `[hidden]{display:none}`, so toggling .hidden alone did
    nothing: the pagination bar (and its now-stale prev/next buttons) stayed visible. */
 #opds-pagination[hidden] { display: none; }
+/* "Load while scrolling" (Settings → General): sits under the OPDS / BookOrbit grid and appends the
+   next page when it comes into view; the button is the manual fallback (and the retry after an error). */
+.autoload-more { display: flex; justify-content: center; padding: 1rem 0 calc(1rem + var(--sab, env(safe-area-inset-bottom, 0px))); }
+.autoload-more[hidden] { display: none; }
 .opds-page-btn {
   padding: .3rem .8rem;
   border: 1px solid var(--color-border);

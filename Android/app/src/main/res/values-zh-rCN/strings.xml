@@ -15,4 +15,8 @@
     <string name="custom_headers_toggle">高级：自定义 HTTP 请求头</string>
     <string name="custom_headers_desc">随每次请求发送到此服务器，适用于反向代理（例如 Cloudflare Access、Pangolin）后的免交互身份验证。</string>
     <string name="custom_headers_hint">CF-Access-Client-Id: xxxx\nCF-Access-Client-Secret: yyyy</string>
+    <string name="not_codexa_title">这看起来不是 Codexa</string>
+    <string name="not_codexa_message">%1$s 上的页面不是 Codexa 服务器。请检查您输入的服务器地址是否正确。</string>
+    <string name="not_codexa_change">更换服务器</string>
+    <string name="not_codexa_continue">仍然继续</string>
 </resources>

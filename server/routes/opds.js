@@ -611,9 +611,28 @@ function normaliseOpds2Feed(data) {
 }
 
 // ── Proxy fetch helper ────────────────────────────────────────────────────────
+// Feed requests get 45 s: some public catalogs are just slow to build their root feed
+// (unglue.it's took 20-27 s in testing, its sub-feeds under 2 s), and 10 s failed them outright.
+const FEED_TIMEOUT_MS = 45000;
+
+// A failed feed response, as an i18n key the client translates instead of a bare "HTTP 403":
+// a login the catalog wants (401 — e.g. Standard Ebooks' Patrons Circle feed), a Cloudflare bot
+// check only a real browser can pass (cf-mitigated: challenge — e.g. manybooks.net), or a timeout.
+function opdsHttpError(res) {
+  if (res.status === 401) return new Error('error.opds_auth_required');
+  if (res.headers.get('cf-mitigated') === 'challenge') return new Error('error.opds_bot_challenge');
+  return new Error(`HTTP ${res.status}`);
+}
+const isTimeout = (err) => err?.name === 'TimeoutError' || err?.name === 'AbortError';
+
 async function fetchOpds(url, server) {
-  const res = await opdsFetch(server, url, { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  let res;
+  try {
+    res = await opdsFetch(server, url, { signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
+  } catch (err) {
+    throw isTimeout(err) ? new Error('error.opds_timeout') : err;
+  }
+  if (!res.ok) throw opdsHttpError(res);
   const ct   = res.headers.get('content-type') || '';
   const buf  = await res.arrayBuffer();
   const body = Buffer.from(buf).toString('utf8');
@@ -715,7 +734,8 @@ router.get('/health', async (req, res) => {
   const checkedAt = Date.now();
   const results = await Promise.all(servers.map(async (s, i) => {
     try {
-      const r = await opdsFetch(s, s.url, { signal: AbortSignal.timeout(5000) });
+      // Longer than a quick ping on purpose: a slow-but-working catalog shouldn't show as down.
+      const r = await opdsFetch(s, s.url, { signal: AbortSignal.timeout(15000) });
       return [i, { reachable: r.ok, checkedAt }];
     } catch {
       return [i, { reachable: false, checkedAt }];
@@ -815,7 +835,8 @@ router.get('/search/:id', async (req, res) => {
 
   try {
     // Step 1: fetch root feed to find the search link
-    const rootRes    = await opdsFetch(server, server.url, { signal: AbortSignal.timeout(8000) });
+    const rootRes    = await opdsFetch(server, server.url, { signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
+    if (!rootRes.ok) throw opdsHttpError(rootRes);
     const rootText   = await rootRes.text();
     const rootParsed = xmlParser.parse(rootText);
     const rootLinks  = rootParsed?.feed?.link || [];
@@ -831,7 +852,7 @@ router.get('/search/:id', async (req, res) => {
       if (searchType.includes('opensearchdescription') || searchHref.endsWith('.opds') || searchHref.endsWith('.xml')) {
         // It's an OpenSearch description document — fetch it to get the actual template
         try {
-          const osRes    = await opdsFetch(server, searchHref, { signal: AbortSignal.timeout(8000) });
+          const osRes    = await opdsFetch(server, searchHref, { signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
           const osText   = await osRes.text();
           const osParsed = xmlParser.parse(osText);
           // <Url type="application/atom+xml" template="..."/>

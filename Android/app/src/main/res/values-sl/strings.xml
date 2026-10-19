@@ -14,4 +14,8 @@
     <string name="custom_headers_toggle">Napredno: Poljubne HTTP glave</string>
     <string name="custom_headers_desc">Poslane z vsako zahtevo na ta strežnik. Uporabno za headless prijavo za obratnim posrednikom (npr. Cloudflare Access, Pangolin).</string>
     <string name="custom_headers_hint">CF-Access-Client-Id: xxxx\nCF-Access-Client-Secret: yyyy</string>
+    <string name="not_codexa_title">To ni videti kot Codexa</string>
+    <string name="not_codexa_message">Stran na %1$s ni strežnik Codexa. Preverite, ali ste vnesli pravilen naslov strežnika.</string>
+    <string name="not_codexa_change">Zamenjaj strežnik</string>
+    <string name="not_codexa_continue">Vseeno nadaljuj</string>
 </resources>

@@ -6290,10 +6290,19 @@ window.addEventListener('online', () => {
 
 function isMobileScreen() { return window.innerWidth < 640; }
 
-// True when the reader should show two side-by-side columns: spread enabled, not a phone-width
-// screen, and the viewer is wide enough. Shared by epub.js (locs cache key) and CXReader.
+// True when the reader should show two side-by-side columns. Shared by epub.js (locs cache key)
+// and CXReader. 'auto' ("Two pages"): not a phone-width screen and the viewer is wide enough.
+// 'adaptive' ("Auto"): two pages only while the viewer is clearly landscape — so rotating a
+// tablet flips between one page (portrait) and two (landscape) on its own. The window 'resize'
+// handler (which rotation fires) already re-runs _cxSyncLayout(), so nothing else is needed.
+// 1.2 rather than 1.0 keeps near-square screens (foldables, split-screen) on a single page.
+const ADAPTIVE_LANDSCAPE_RATIO = 1.2;
 function cxWantsTwoCol() {
   const w = epubViewer?.clientWidth || window.innerWidth;
+  if (prefs.spread === 'adaptive') {
+    const h = epubViewer?.clientHeight || window.innerHeight;
+    return !isMobileScreen() && h > 0 && w / h >= ADAPTIVE_LANDSCAPE_RATIO;
+  }
   return prefs.spread === 'auto' && !isMobileScreen() && w >= 800;
 }
 

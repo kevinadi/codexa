@@ -1615,6 +1615,14 @@ input[type="range"]::-moz-range-thumb {
 }
 .spread-buttons.page-anim-grid .spread-btn { flex: none; }
 html.no-flexgap .spread-buttons.page-anim-grid > * + * { margin-left: 0; }
+/* Page-layout picker: 4 options in a 2x2 grid — one row of 4 truncated the labels on a phone. */
+.spread-buttons.layout-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: .5rem;
+}
+.spread-buttons.layout-grid .spread-btn { flex: none; }
+html.no-flexgap .spread-buttons.layout-grid > * + * { margin-left: 0; }
 .theme-btn,
 .spread-btn {
   flex: 1;

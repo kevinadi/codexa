@@ -4,7 +4,7 @@
 // renderer) rather than reusing library.js's book-card component, which isn't
 // parameterized for a different data source / action set.
 import { apiFetch } from './api.js';
-import { toast, setButtonLoading, initSortMenuFor, resyncSortMenu, showBlockingOverlay, scrollCatalogToTop } from './ui.js';
+import { toast, setButtonLoading, initSortMenuFor, resyncSortMenu, showBlockingOverlay, scrollCatalogToTop, autoLoadEnabled, createAutoLoader } from './ui.js';
 import { t } from './i18n.js';
 import { reloadLibrary, openInfoModal, sanitizeHtml } from './library.js';
 import { reloadShelves } from './sidebar.js';
@@ -19,6 +19,11 @@ let currentItem    = null;        // { id, name } — the selected library/colle
 let currentPage    = 0;
 const PAGE_SIZE    = 30;
 let currentTotal   = 0;
+// Bumped by every loadBooks(), so an auto-load ("Load while scrolling") still in flight when the
+// user picks another section/item/sort is dropped instead of appending into the new listing.
+let booksGen       = 0;
+let autoLoadEl     = null;
+let autoLoader     = null;
 let bookorbitUrl   = ''; // BookOrbit server base URL, for the detail modal's "View on BookOrbit" link
 // One-shot "resume where I was" state — saved right before navigating to the reader for a peek
 // (see renderPeekButton), restored by initBookorbit() when the reader closes back here via
@@ -91,6 +96,7 @@ async function selectSection(section) {
   gridEl.innerHTML = `<div class="opds-welcome" style="grid-column:1/-1"><span class="icon">📚</span><span>${escHtml(t('bookorbit.pick_item'))}</span></div>`;
   emptyEl.hidden = true;
   paginationEl.hidden = true;
+  autoLoadEl.hidden = true;
   titleEl.textContent = '';
 
   if (section === 'search') {
@@ -196,6 +202,7 @@ function buildSublistPager() {
 }
 
 function renderSectionTiles(items) {
+  autoLoadEl.hidden = true;
   if (!items.length) {
     emptyEl.hidden = false;
     paginationEl.hidden = true;
@@ -300,6 +307,7 @@ async function loadBooks(page) {
   if (source !== 'search' && !currentItem) return;
 
   currentPage = page;
+  booksGen++;
   setLoading(true);
   gridEl.innerHTML = '';
   emptyEl.hidden = true;
@@ -671,7 +679,8 @@ async function openCollectionsModal(book) {
       }
       // If the currently-open collection lost or gained this book, refresh its grid too.
       if (currentItem && (toAdd.includes(currentItem.id) || toRemove.includes(currentItem.id))) {
-        loadBooks(currentPage);
+        // With auto-load the grid may hold several appended pages; reload from the top then.
+        loadBooks(autoLoadEnabled() ? 0 : currentPage);
       }
     } catch (err) {
       toast.error(t('common.err_prefix') + err.message);
@@ -1088,6 +1097,14 @@ export async function openBookorbitBrowserAt(source, id, name) {
 function renderPagination() {
   paginationEl.innerHTML = '';
   const totalPages = Math.max(1, Math.ceil(currentTotal / PAGE_SIZE));
+  // "Load while scrolling" replaces the buttons with a Load more box under the grid.
+  if (autoLoadEnabled()) {
+    paginationEl.hidden = true;
+    autoLoadEl.hidden = currentPage >= totalPages - 1;
+    if (!autoLoadEl.hidden) requestAnimationFrame(() => autoLoader.check()); // a short page may not fill the screen
+    return;
+  }
+  autoLoadEl.hidden = true;
   if (totalPages <= 1) { paginationEl.hidden = true; return; }
   paginationEl.hidden = false;
 
@@ -1110,6 +1127,34 @@ function renderPagination() {
   paginationEl.appendChild(prevBtn);
   paginationEl.appendChild(info);
   paginationEl.appendChild(nextBtn);
+}
+
+// Auto-load: fetch the next page and append its cards (renderGrid only ever appends; loadBooks
+// is what clears the grid). Resolves true while there's yet another page; throws (after a
+// toast) so the loader pauses until its button is tapped.
+async function loadMoreBooks() {
+  const source = SECTION_SOURCE[currentSection];
+  if (source !== 'search' && !currentItem) return false;
+  const gen = booksGen;
+  const page = currentPage + 1;
+  const params = new URLSearchParams({ source, page: String(page), size: String(PAGE_SIZE) });
+  if (currentItem) params.set('id', String(currentItem.id));
+  params.set('sort', currentSort);
+  const q = searchInput.value.trim();
+  if (q) params.set('q', q);
+  let data;
+  try {
+    data = await apiFetch(`/bookorbit/books?${params}`);
+  } catch (err) {
+    toast.error(t('common.err_prefix') + err.message);
+    throw err;
+  }
+  if (gen !== booksGen) return false; // user moved on meanwhile
+  currentPage = page;
+  currentTotal = data.total || 0;
+  if (data.items?.length) renderGrid(data.items);
+  renderPagination();
+  return !autoLoadEl.hidden;
 }
 
 // ── Search / filter (shared toolbar input) ────────────────────────────────────
@@ -1197,6 +1242,8 @@ export async function initBookorbit() {
   gridEl       = document.getElementById('bookorbit-grid');
   emptyEl      = document.getElementById('bookorbit-empty');
   paginationEl = document.getElementById('bookorbit-pagination');
+  autoLoadEl   = document.getElementById('bookorbit-autoload');
+  autoLoader   = createAutoLoader(autoLoadEl, loadMoreBooks);
   sidebarEl       = document.getElementById('bookorbit-sidebar');
   drawerToggleBtn = document.getElementById('bookorbit-drawer-toggle');
   drawerCloseBtn  = document.getElementById('bookorbit-drawer-close');

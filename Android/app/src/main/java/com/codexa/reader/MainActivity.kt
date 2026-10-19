@@ -29,6 +29,7 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -73,6 +74,13 @@ class MainActivity : AppCompatActivity() {
     @Volatile
     private var hasLoadedOwnContent = false
 
+    // Wrong-server check: until a page on the configured host has been confirmed to be Codexa
+    // (PREF_VERIFIED_URL), every page that finishes there is checked for Codexa's markers, and
+    // a mistyped address that happens to open some other site gets a warning instead of just
+    // silently showing it. Once confirmed, never checked again for that URL, so a later outage
+    // (a proxy's 502 page, say) can't raise a false alarm. Warned at most once per server load.
+    private var notCodexaWarned = false
+
     // Launcher for ServerSelectActivity — handles both first-run and change-server flows
     private val serverSelectLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -86,6 +94,7 @@ class MainActivity : AppCompatActivity() {
             oidcFlowActive = false
             // New/changed server — haven't proven we're past its auth gate (if any) yet.
             hasLoadedOwnContent = false
+            notCodexaWarned = false
             // Re-register the header-injection script in case the user just changed it
             // (or the server itself) in ServerSelectActivity, before loading the new URL.
             injectCustomHeadersScript()
@@ -542,6 +551,7 @@ class MainActivity : AppCompatActivity() {
                 val serverHost = getSavedUrl()?.let { Uri.parse(it).host }
                 if (finishedHost != null && serverHost != null && finishedHost.equals(serverHost, ignoreCase = true)) {
                     hasLoadedOwnContent = true
+                    checkIsCodexa(view, serverHost)
                 }
                 val isReader = url.contains("/reader.html", ignoreCase = true)
                 runOnUiThread {
@@ -631,6 +641,29 @@ class MainActivity : AppCompatActivity() {
             putExtra("cancellable", cancellable)
         }
         serverSelectLauncher.launch(intent)
+    }
+
+    // Every Codexa page's <title> contains "Codexa" (i18n.js / app.js / reader.js only ever
+    // rewrite it as "… — Codexa" / "Codexa vX"), and its main pages load these scripts — both true
+    // of older servers too, so no server change is needed for this check to recognise them.
+    private fun checkIsCodexa(view: WebView, host: String) {
+        val saved = getSavedUrl() ?: return
+        if (notCodexaWarned || saved == getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_VERIFIED_URL, null)) return
+        val js = "(function(){return /Codexa/.test(document.title) || !!document.querySelector(" +
+            "'script[src^=\"/js/sw-register.js\"],script[src^=\"/js/app.js\"],script[src^=\"/js/login.js\"],script[src^=\"/js/reader.js\"]');})()"
+        view.evaluateJavascript(js) { result ->
+            if (result == "true") {
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(PREF_VERIFIED_URL, saved).apply()
+            } else if (!notCodexaWarned && !isFinishing && getSavedUrl() == saved) {
+                notCodexaWarned = true
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.not_codexa_title)
+                    .setMessage(getString(R.string.not_codexa_message, host))
+                    .setPositiveButton(R.string.not_codexa_change) { _, _ -> openServerSelect(cancellable = true) }
+                    .setNegativeButton(R.string.not_codexa_continue, null)
+                    .show()
+            }
+        }
     }
 
     private fun getSavedUrl(): String? =
@@ -826,5 +859,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val PREFS_NAME = "codexa_prefs"
         private const val PREF_URL   = "server_url"
+        private const val PREF_VERIFIED_URL = "verified_codexa_url"
     }
 }
