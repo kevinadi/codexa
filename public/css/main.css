@@ -24,6 +24,48 @@
   --sar:               var(--sar, env(safe-area-inset-right, 0px));
 }
 
+/* ── iOS installed-PWA top blur ──────────────────────────────────────────────── */
+/*
+ * iOS 26 started rendering installed PWAs fullscreen; iOS 27 paints a "liquid glass" blur
+ * and gradient across the top edge of one — deeper than the status bar, over the page
+ * content, and only when installed (in a Safari tab it stays status-bar-sized). The
+ * theme-color meta tag has been unsupported since iOS 26 and
+ * apple-mobile-web-app-status-bar-style is deprecated, so neither can colour or clear it,
+ * and a background on <body> does not help (the blur is painted below it). What does work:
+ * a `position: fixed`, fully opaque element clamped to the very top edge — measured to need
+ * >=6px of height, >=80% of the viewport width and to sit within 4px of the top. A *sticky*
+ * header in its un-stuck state does not qualify, which is why .app-body-header on its own
+ * leaves the blur in place on iOS.
+ *
+ * Height is max(8px, --sat) deliberately: env(safe-area-inset-top) still reads 0px at load
+ * in iOS standalone (see reader.css), and a zero-height strip is no strip at all.
+ * The colour must match the chrome it covers, or the strip shows up as a band: on the
+ * library that is the mobile header — and the off-canvas sidebar, which shares its surface
+ * colour — while on login / the OIDC callback the top edge really is the page background.
+ *
+ * z-index 150: above the sticky header (100) so this is the topmost fixed opaque layer at
+ * the top edge, below the mobile sidebar (300), its overlay (205-210) and the modals
+ * (9000+) so it can never paint a band across them. pointer-events:none — it must never
+ * swallow a tap, and it is aria-hidden because it carries no content.
+ *
+ * Shown only in the <=768px layout (see the activation rule further down) — that is the one
+ * that reserves top space for the status bar. In landscape or on an iPad the sidebar shares
+ * the top edge, where a full-width strip of a single colour would band.
+ */
+#ios-top-fill {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: max(8px, var(--sat, env(safe-area-inset-top, 0px)));
+  background: var(--ios-top-fill-bg, var(--color-bg));
+  pointer-events: none;
+  z-index: 150;
+}
+.sidebar-layout #ios-top-fill { --ios-top-fill-bg: var(--color-surface); }
+
 /* Light theme */
 @media (prefers-color-scheme: light) {
   :root {
@@ -2498,6 +2540,9 @@ html[data-lib-theme="eink"] .book-series-badge,
   html[data-lib-theme="eink"] .app-sidebar { transition: none; }
   .sidebar-nav { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .app-body-header  { display: flex; }
+  /* iOS installed PWA only: the opaque top strip that suppresses iOS 27's blur over the top
+     edge (see the #ios-top-fill block near the top of this file). */
+  html.ios-pwa #ios-top-fill { display: block; }
   .sidebar-collapse-btn { display: none; }
   .app-sidebar.open .sidebar-collapse-btn { display: flex; }
 }

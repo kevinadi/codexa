@@ -21,6 +21,23 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Prijava — Codexa</title>
+  <script>
+    /* iOS 26/27 installed-PWA top blur: flag <html> so main.css renders the opaque
+       #ios-top-fill strip that suppresses the blur iOS paints over the top edge of an
+       installed PWA. Deliberately iOS AND installed only — in a browser tab the strip
+       would sit over real page content, which has no status bar to hide behind. */
+    (function () {
+      try {
+        var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var mq = window.matchMedia;
+        var pwa = navigator.standalone === true ||
+                  (mq && (mq('(display-mode: standalone)').matches ||
+                          mq('(display-mode: fullscreen)').matches));
+        if (iOS && pwa) document.documentElement.className += ' ios-pwa';
+      } catch (e) {}
+    })();
+  </script>
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
@@ -118,6 +135,10 @@
   </style>
 </head>
 <body>
+
+  <!-- iOS installed-PWA top blur fix (see the #ios-top-fill block in main.css). -->
+  <div id="ios-top-fill" aria-hidden="true"></div>
+
   <div class="login-wrap">
     <div class="login-logo">
       <h1 id="login-logo"><img src="/images/codexa.svg" class="nav-icon nav-icon-codexa" alt="Codexa" style="width:2rem;height:2rem;vertical-align:middle"> Codexa</h1>
