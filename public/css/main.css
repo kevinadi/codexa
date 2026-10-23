@@ -59,7 +59,11 @@
   left: 0;
   right: 0;
   width: 100%;
-  height: max(8px, var(--sat, env(safe-area-inset-top, 0px)));
+  /* 8px + max(measured status-bar height, env(safe-area-inset-top)): the measurement
+     (--ios-topbar, written by the page bootstrap) covers iOS builds that report the inset
+     as 0 in standalone, and taking the larger of the two can only grow the strip — its
+     colour is the header's own, so a few px either way is invisible on the library. */
+  height: max(8px, calc(var(--sat, env(safe-area-inset-top, 0px)) + 8px));
   background: var(--ios-top-fill-bg, var(--color-bg));
   pointer-events: none;
   z-index: 150;

@@ -10,7 +10,12 @@
     /* iOS 26/27 installed-PWA top blur: flag <html> so main.css renders the opaque
        #ios-top-fill strip that suppresses the blur iOS paints over the top edge of an
        installed PWA. Deliberately iOS AND installed only — in a browser tab the strip
-       would sit over real page content, which has no status bar to hide behind. */
+       would sit over real page content, which has no status bar to hide behind.
+       Also writes --ios-topbar: env(safe-area-inset-top) is unreliable in iOS standalone
+       (0px at load), so the strip also gets the status-bar height measured directly. In an
+       installed PWA the viewport excludes the status bar while screen.height includes it,
+       so the difference IS the bar — sanity-clamped, because a wrong number here is worse
+       than falling back to env(). */
     (function () {
       try {
         var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -19,7 +24,21 @@
         var pwa = navigator.standalone === true ||
                   (mq && (mq('(display-mode: standalone)').matches ||
                           mq('(display-mode: fullscreen)').matches));
-        if (iOS && pwa) document.documentElement.className += ' ios-pwa';
+        if (!iOS || !pwa) return;
+        document.documentElement.className += ' ios-pwa';
+        // --sat is what the whole app lays its top chrome out with (header padding, reader
+        // padding, the strip's height) and the Android path already overrides it from JS after
+        // the chrome settles. Writing the measurement to the SAME variable is what keeps the
+        // strip and the layout in step: strip = inset + 8px, header padding = 8px + inset, so
+        // the opaque strip lands exactly on the header's own padding and never over content.
+        var measure = function () {
+          var bar = Math.round(window.screen.height - window.innerHeight);
+          if (bar >= 12 && bar <= 120) {
+            document.documentElement.style.setProperty('--sat', bar + 'px');
+          }
+        };
+        measure();
+        window.addEventListener('load', measure, { once: true });
       } catch (e) {}
     })();
   </script>

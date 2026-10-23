@@ -71,7 +71,7 @@ html, body {
      which is exactly what happens while env(safe-area-inset-top) still reads 0px at load in
      iOS standalone, before the PWA chrome settles. 8px is the measured minimum height an
      opaque top-edge element needs to suppress the blur. */
-  height: max(8px, var(--sat, env(safe-area-inset-top, 0px)));
+  height: max(8px, calc(var(--sat, env(safe-area-inset-top, 0px)) + 8px));
   background: var(--reader-page-bg, var(--color-bg));
   transition: background .3s;
   z-index: 10000; /* above loading overlay */

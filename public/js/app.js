@@ -57,6 +57,10 @@ async function checkForUpdate(localVersion) {
 }
 
 function fetchAndShowVersion() {
+  // Shell build tag. The version itself comes from the SERVER, so on its own it cannot tell a
+  // stale service-worker cache from a fresh shell — this tag is what answers "which shell is
+  // this device actually running?" without devtools. Bump it whenever the shell changes.
+  const SHELL_BUILD = 'iosblur2';
   fetch('/api/version').then(r => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
@@ -67,11 +71,12 @@ function fetchAndShowVersion() {
     // browser ever firing a matching 'online' event, which otherwise left this class
     // (and the hidden version number) stuck indefinitely.
     document.body.classList.remove('is-offline');
-    document.title = `Codexa v${version}`;
+    const shown = `${version}+${SHELL_BUILD}`;
+    document.title = `Codexa v${shown}`;
     document.querySelectorAll('a.logo').forEach(logo => {
       const ver = logo.querySelector('.app-version');
-      if (ver) { ver.textContent = `v${version}`; }
-      else { logo.insertAdjacentHTML('beforeend', ` <span class="app-version">v${version}</span>`); }
+      if (ver) { ver.textContent = `v${shown}`; }
+      else { logo.insertAdjacentHTML('beforeend', ` <span class="app-version">v${shown}</span>`); }
     });
     checkForUpdate(version);
   }).catch(() => {});

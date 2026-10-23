@@ -208,17 +208,29 @@ app.use((req, res, next) => {
       .replace('<head>', `<head>\n  <script>window.__DEBUG=${CLIENT_DEBUG};</script>`);
     html = html.replace(INLINE_SCRIPT_RE, (_m, attrs) => `<script nonce="${nonce}"${attrs}>`);
     res.setHeader('Content-Security-Policy', buildCsp(nonce));
+    // The shell must never be answered from the HTTP cache: the service worker's own cache is
+    // the one that is versioned, and a stale copy here can outlive a deploy (the client keeps
+    // running last generation's CSS while every server response looks fresh).
+    res.setHeader('Cache-Control', 'no-store');
     return res.type('html').send(html);
   }
   if (reqPath === '/sw.js') {
     const js = fs.readFileSync(filePath, 'utf8');
+    res.setHeader('Cache-Control', 'no-store');
     return res.type('js').send(_swSnippet + js);
   }
   next();
 });
 
 // ── Static files ──────────────────────────────────────────────────────────────
-app.use(express.static(SERVE_DIR));
+// no-store on the shell (html is handled above, sw.js too): the service worker is the only
+// layer that should cache these, and it versions its cache by name — an HTTP-cached shell can
+// silently outlive a deploy.
+app.use(express.static(SERVE_DIR, {
+  setHeaders: (res, p) => {
+    if (/\.(?:css|js|json|webmanifest)$/i.test(p)) res.setHeader('Cache-Control', 'no-store');
+  },
+}));
 // Expose extracted covers and user-uploaded fonts to the browser
 app.use('/covers',     express.static(path.join(DATA_DIR, 'covers')));
 app.use('/user-fonts', express.static(path.join(DATA_DIR, 'fonts')));
