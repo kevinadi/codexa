@@ -62,7 +62,7 @@ function fetchAndShowVersion() {
   // so a stale service-worker cache and a fresh shell report the same number. Bump the tag
   // whenever the shell changes; this is the answer to "which build is this device running?"
   // without devtools.
-  const SHELL_BUILD = 'blurfix3';
+  const SHELL_BUILD = 'blurfix4';
   fetch('/api/version').then(r => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();

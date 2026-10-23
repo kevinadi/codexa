@@ -24,28 +24,33 @@
   --sar:               var(--sar, env(safe-area-inset-right, 0px));
 }
 
-/* ── iOS 27 installed-PWA top-edge blur ──────────────────────────────────────── */
+/* ── iOS installed-PWA top edge: reserve an empty band and paint it ───────────── */
 /*
- * iOS 27 overlays an unintended progressive blur across the top edge of an installed PWA —
- * across the header and the content just below it, not merely the status-bar strip. iOS draws
- * it, so `backdrop-filter: none` is powerless against it, `theme-color` has been unsupported
- * since iOS 26 and `apple-mobile-web-app-status-bar-style` is deprecated.
+ * iOS 27 blurs the top edge of an installed PWA — over the status-bar strip and the first few
+ * (sometimes many) px of the page below it. It is drawn by iOS, so no CSS blur can cancel it.
+ * Two things are done about it here, in order of what actually buys the user something:
  *
- * WebKit decides by inspecting STYLES, not painted pixels: it looks for a `position: fixed`
- * element at the viewport edge, at least 90% of the viewport wide, whose background is thicker
- * than its 10px "thin border" threshold. Find none, and it treats the top edge as content
- * scrolling under the status bar and forces the blur on. So the fix is to satisfy that
- * predicate with a surface that paints nothing:
- *   - `height: 11px` — must exceed the 10px threshold; 11px is the device-verified floor
- *   - `background-clip: text` over empty content — the element keeps a valid background colour
- *     and size for the check while drawing no pixel, so nothing is hidden and nothing shifts
- *   - `background-color` — this is the colour iOS then paints the status-bar area with, so it
- *     must match the chrome behind it (header/sidebar surface here, page background elsewhere)
- *   - `opacity: 0`, `visibility: hidden` or `display: none` DISQUALIFY it and bring the blur
- *     back — which is why the element is switched on by a gate rather than hidden by default
- * Device-verified recipes behind this: qiita.com/na-trium-144 (reverse-engineered WebKit
- * predicate) and tips.ojapp.app/en/ios-27-pwa-top-blur-workaround-2 (CSS-only variant).
- * See ~/codexa/IOS-BLUR-FIX.md §2c.
+ * 1. THE BLUR IS GIVEN NOTHING TO SMUDGE. In an installed app `--sat` is redefined as
+ *    `max(measured status-bar height, env(safe-area-inset-top)) + --ios-top-gap`, i.e. the app's
+ *    own top padding grows by 10px. Every top-left of the interface (mobile header, sidebar,
+ *    reader layout, drawer headers, modals) is positioned from `--sat`, so one variable moves
+ *    them all down together and the band the blur covers is uniform chrome colour with no text
+ *    or icons inside it. A blur of a single flat colour is that same flat colour — invisible.
+ *    Tune with `--ios-top-gap` (10px now); nothing else needs to move.
+ *
+ * 2. THE BAND IS PAINTED, for builds where the blur is only suppressed by a qualifying fixed
+ *    surface: WebKit otherwise treats the top edge as content scrolling under the status bar and
+ *    forces the blur on. The predicate is style-based — a `position: fixed` element at the
+ *    viewport edge, at least 90% of the viewport wide, background thicker than its 10px "thin
+ *    border" threshold — so #ios-top-fill is exactly that, painted in the same colour as the
+ *    chrome behind it (its `background-color` is also what iOS paints the status-bar area with),
+ *    and `pointer-events: none` keeps it out of the way. `opacity: 0`, `visibility: hidden` or
+ *    `display: none` would disqualify it and bring the blur back, which is why it is switched on
+ *    by a gate rather than hidden by default.
+ *
+ * Reverse-engineered predicate, device-tested: qiita.com/na-trium-144 (WebKit conditions, and
+ * the background-clip: text variant) and tips.ojapp.app/en/ios-27-pwa-top-blur-workaround-2.
+ * See ~/codexa/IOS-BLUR-FIX.md §2d.
  */
 #ios-top-fill {
   display: none;                 /* switched on by the standalone gates below */
@@ -54,11 +59,9 @@
   left: 0;
   right: 0;
   width: 100%;
-  height: 11px;
+  height: max(11px, var(--sat, env(safe-area-inset-top, 0px)));
   z-index: 2147483647;
   pointer-events: none;          /* never intercept a tap */
-  -webkit-background-clip: text;
-  background-clip: text;         /* empty content ⇒ nothing is painted */
   background-color: var(--ios-top-fill-bg, var(--color-bg));
 }
 /* Two independent signals, either of which is enough: the CSS engine's own display-mode (which
@@ -66,8 +69,10 @@
    264218), and the JS flag the page bootstrap sets. A single signal can be wrong on one OS
    build; a gate that silently fails is exactly the failure mode this fix exists to end. */
 @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  html:root { --sat: calc(max(var(--ios-topbar, 0px), env(safe-area-inset-top, 0px)) + var(--ios-top-gap, 10px)); }
   #ios-top-fill { display: block; }
 }
+html.ios-pwa { --sat: calc(max(var(--ios-topbar, 0px), env(safe-area-inset-top, 0px)) + var(--ios-top-gap, 10px)); }
 html.ios-pwa #ios-top-fill { display: block; }
 .sidebar-layout #ios-top-fill { --ios-top-fill-bg: var(--color-surface); }
 .blurfix-badge {
