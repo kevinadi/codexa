@@ -24,51 +24,56 @@
   --sar:               var(--sar, env(safe-area-inset-right, 0px));
 }
 
-/* ── iOS installed-PWA top blur ──────────────────────────────────────────────── */
+/* ── iOS 27 installed-PWA top-edge blur ──────────────────────────────────────── */
 /*
- * iOS 26 started rendering installed PWAs fullscreen; iOS 27 paints a "liquid glass" blur
- * and gradient across the top edge of one — deeper than the status bar, over the page
- * content, and only when installed (in a Safari tab it stays status-bar-sized). The
- * theme-color meta tag has been unsupported since iOS 26 and
- * apple-mobile-web-app-status-bar-style is deprecated, so neither can colour or clear it,
- * and a background on <body> does not help (the blur is painted below it). What does work:
- * a `position: fixed`, fully opaque element clamped to the very top edge — measured to need
- * >=6px of height, >=80% of the viewport width and to sit within 4px of the top. A *sticky*
- * header in its un-stuck state does not qualify, which is why .app-body-header on its own
- * leaves the blur in place on iOS.
+ * iOS 27 overlays an unintended progressive blur across the top edge of an installed PWA —
+ * across the header and the content just below it, not merely the status-bar strip. iOS draws
+ * it, so `backdrop-filter: none` is powerless against it, `theme-color` has been unsupported
+ * since iOS 26 and `apple-mobile-web-app-status-bar-style` is deprecated.
  *
- * Height is max(8px, --sat) deliberately: env(safe-area-inset-top) still reads 0px at load
- * in iOS standalone (see reader.css), and a zero-height strip is no strip at all.
- * The colour must match the chrome it covers, or the strip shows up as a band: on the
- * library that is the mobile header — and the off-canvas sidebar, which shares its surface
- * colour — while on login / the OIDC callback the top edge really is the page background.
- *
- * z-index 150: above the sticky header (100) so this is the topmost fixed opaque layer at
- * the top edge, below the mobile sidebar (300), its overlay (205-210) and the modals
- * (9000+) so it can never paint a band across them. pointer-events:none — it must never
- * swallow a tap, and it is aria-hidden because it carries no content.
- *
- * Shown only in the <=768px layout (see the activation rule further down) — that is the one
- * that reserves top space for the status bar. In landscape or on an iPad the sidebar shares
- * the top edge, where a full-width strip of a single colour would band.
+ * WebKit decides by inspecting STYLES, not painted pixels: it looks for a `position: fixed`
+ * element at the viewport edge, at least 90% of the viewport wide, whose background is thicker
+ * than its 10px "thin border" threshold. Find none, and it treats the top edge as content
+ * scrolling under the status bar and forces the blur on. So the fix is to satisfy that
+ * predicate with a surface that paints nothing:
+ *   - `height: 11px` — must exceed the 10px threshold; 11px is the device-verified floor
+ *   - `background-clip: text` over empty content — the element keeps a valid background colour
+ *     and size for the check while drawing no pixel, so nothing is hidden and nothing shifts
+ *   - `background-color` — this is the colour iOS then paints the status-bar area with, so it
+ *     must match the chrome behind it (header/sidebar surface here, page background elsewhere)
+ *   - `opacity: 0`, `visibility: hidden` or `display: none` DISQUALIFY it and bring the blur
+ *     back — which is why the element is switched on by a gate rather than hidden by default
+ * Device-verified recipes behind this: qiita.com/na-trium-144 (reverse-engineered WebKit
+ * predicate) and tips.ojapp.app/en/ios-27-pwa-top-blur-workaround-2 (CSS-only variant).
+ * See ~/codexa/IOS-BLUR-FIX.md §2c.
  */
 #ios-top-fill {
-  display: none;
+  display: none;                 /* switched on by the standalone gates below */
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   width: 100%;
-  /* 8px + max(measured status-bar height, env(safe-area-inset-top)): the measurement
-     (--ios-topbar, written by the page bootstrap) covers iOS builds that report the inset
-     as 0 in standalone, and taking the larger of the two can only grow the strip — its
-     colour is the header's own, so a few px either way is invisible on the library. */
-  height: max(8px, calc(var(--sat, env(safe-area-inset-top, 0px)) + 8px));
-  background: var(--ios-top-fill-bg, var(--color-bg));
-  pointer-events: none;
-  z-index: 150;
+  height: 11px;
+  z-index: 2147483647;
+  pointer-events: none;          /* never intercept a tap */
+  -webkit-background-clip: text;
+  background-clip: text;         /* empty content ⇒ nothing is painted */
+  background-color: var(--ios-top-fill-bg, var(--color-bg));
 }
+/* Two independent signals, either of which is enough: the CSS engine's own display-mode (which
+   on iOS reports `fullscreen` for an app whose manifest says fullscreen — see WebKit bug
+   264218), and the JS flag the page bootstrap sets. A single signal can be wrong on one OS
+   build; a gate that silently fails is exactly the failure mode this fix exists to end. */
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  #ios-top-fill { display: block; }
+}
+html.ios-pwa #ios-top-fill { display: block; }
 .sidebar-layout #ios-top-fill { --ios-top-fill-bg: var(--color-surface); }
+.blurfix-badge {
+  margin-left: .4rem; padding: .05rem .4rem; font-size: .68rem; font-weight: 600;
+  color: #ffb300; border: 1px solid #7a5200; border-radius: 999px; white-space: nowrap;
+}
 
 /* Light theme */
 @media (prefers-color-scheme: light) {
@@ -2544,9 +2549,6 @@ html[data-lib-theme="eink"] .book-series-badge,
   html[data-lib-theme="eink"] .app-sidebar { transition: none; }
   .sidebar-nav { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .app-body-header  { display: flex; }
-  /* iOS installed PWA only: the opaque top strip that suppresses iOS 27's blur over the top
-     edge (see the #ios-top-fill block near the top of this file). */
-  html.ios-pwa #ios-top-fill { display: block; }
   .sidebar-collapse-btn { display: none; }
   .app-sidebar.open .sidebar-collapse-btn { display: flex; }
 }

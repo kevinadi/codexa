@@ -62,7 +62,7 @@ function fetchAndShowVersion() {
   // so a stale service-worker cache and a fresh shell report the same number. Bump the tag
   // whenever the shell changes; this is the answer to "which build is this device running?"
   // without devtools.
-  const SHELL_BUILD = 'blurfix';
+  const SHELL_BUILD = 'blurfix3';
   fetch('/api/version').then(r => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
@@ -84,6 +84,28 @@ function fetchAndShowVersion() {
   }).catch(() => {});
 }
 fetchAndShowVersion();
+
+// iOS blur-fix self-check. iOS 27 blurs the top edge of an installed PWA unless a qualifying
+// opaque surface sits at the very top (see #ios-top-fill in main.css). If this app IS installed
+// and that surface is not active, say so next to the version: a silent no-op is precisely the
+// failure mode that cannot be debugged from a phone, and it looks identical to a fix that
+// simply did not work.
+function checkIosBlurFix() {
+  try {
+    const installed = navigator.standalone === true ||
+      matchMedia('(display-mode: standalone)').matches ||
+      matchMedia('(display-mode: fullscreen)').matches;
+    if (!installed) return;
+    const strip = document.getElementById('ios-top-fill');
+    if (strip && getComputedStyle(strip).display !== 'none') return;
+    document.querySelectorAll('a.logo').forEach(logo => {
+      if (logo.querySelector('.blurfix-badge')) return;
+      logo.insertAdjacentHTML('beforeend',
+        ' <span class="blurfix-badge" title="iOS top-blur surface is not active">blur fix off</span>');
+    });
+  } catch { /* a diagnostic must never break the app */ }
+}
+setTimeout(checkIosBlurFix, 600);
 
 // Toggle is-offline class so CSS can show/hide the offline icon and version number.
 // Note: body.is-offline is also set/cleared by library.js based on actual API
